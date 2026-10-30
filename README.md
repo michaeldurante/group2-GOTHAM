@@ -31,8 +31,10 @@ pip install -e '.[dev,docs]'
 After installation, you can run daneel from the command line:
 
 ```bash
-daneel -i <input_file> --transit [--output lightcurve.png]
+daneel -i <input_file> --transit [--output lightcurve.png] [-s] [-e]
 ```
+The package daneel requires an input parameter file (YAML format) containing the properties of the exoplanet, from these parameters it returns several outputs like transit, detection and atmosphere analysis.\
+In the current version of the package only the detection of the exoplanet (transit) is implemented; stay tuned for future versions.
 
 ### Command-line options
 
@@ -41,12 +43,20 @@ daneel -i <input_file> --transit [--output lightcurve.png]
 - `-d, --detect`: Reserved for the course detection exercise
 - `-a, --atmosphere`: Reserved for the course atmosphere exercise
 - `-o, --output`: Output path for the transit plot (default: `lc.png`)
+- `-s, --show`: Display the light curve instead of only saving it
+- `-e, --estimate`: Give a quick estimate of the flux at transit. Works only with --show
 
 ### Examples
 
 ```bash
 # Run exoplanet detection
 daneel -i examples/params.yaml --transit --output lightcurve.png
+
+# Run exoplanet detection with displayed light curve
+daneel -i examples/params.yaml --transit --output lightcurve.png --show
+
+# Run exoplanet detection and give estimate of the flux at transit
+daneel -i examples/params.yaml --transit -o lightcurve.png --show --estimate
 
 # Run atmospheric characterization
 daneel -i examples/params.yaml --detect
