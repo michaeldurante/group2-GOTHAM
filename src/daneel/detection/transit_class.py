@@ -32,7 +32,7 @@ class TransitClass:
         plt.ylabel('Normalized Flux', fontsize=12, color='black')
         plt.axhline(1.0, color="0.6", lw=1, ls="--", label="Out-of-transit flux")
         plt.grid(True, color='lightgray', linestyle='--', linewidth=0.5, alpha=0.5)
-        plt.title(f'Light curve - {self.name}')
+        plt.title(self.name)
         plt.legend(loc='lower left')
         plt.savefig(output_file, dpi=300)
         if show:
