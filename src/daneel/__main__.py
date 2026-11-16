@@ -1,7 +1,7 @@
 import argparse
 from datetime import datetime, timezone
 
-from daneel.detection import TransitModel
+# from daneel.detection import TransitModel
 from daneel.detection import TransitClass
 from daneel.parameters import Parameters
 
@@ -13,7 +13,7 @@ def main():
         "-i",
         "--input",
         dest="input_file",
-        type=str,
+        # type=str,
         required=True,
         help="Input par file to pass",
     )
