@@ -38,7 +38,7 @@ class RandomForestDetection:
 
         self.csv = p_dictionary.get('csv_path')
         self.n_bins = p_dictionary.get('n_bins',1000) 
-        self.samples = 350   
+        self.samples = 400   
         self.max_depth = p_dictionary.get('max_depth')
         self.n_estimators = p_dictionary.get('n_estimators')
         self.use_scaler = p_dictionary.get('scalar')
