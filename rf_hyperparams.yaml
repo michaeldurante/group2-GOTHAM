@@ -1,5 +1,5 @@
 detection:
-  dataset_path: "assignment_2_random_forest/tess_data.csv"
+  dataset_path: assignment_2_random_forest/tess_data.csv      # change path if yaml file is moved
   test_size: 0.2
   random_state: 42
   n_estimators: 200

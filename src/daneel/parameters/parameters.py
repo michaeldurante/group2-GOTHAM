@@ -28,7 +28,20 @@ class Parameters:
         else:
             self.params = loaded
 
+        '''
+        create an absolute path to the csv file starting from the .yaml path
+        create path to output directory where .yaml file is
+        '''
+        if "detection" in loaded:
+            self.params = loaded.get('detection', loaded)
+            yaml_dir = path.parent
+            dataset_path = (yaml_dir / self.params['dataset_path']).resolve()
+            output_dir = (yaml_dir / self.params['output_dir']).resolve()
+            self.params.update({'dataset_path': dataset_path, 'output_dir': output_dir})
+
         self._replace_none_strings(self.params)
+
+
 
     @staticmethod
     def _replace_none_strings(values: dict[str, Any]) -> None:
