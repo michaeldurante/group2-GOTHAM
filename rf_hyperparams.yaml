@@ -1,0 +1,8 @@
+detection:
+  dataset_path: "assignment_2_random_forest/tess_data.csv"
+  test_size: 0.2
+  random_state: 42
+  n_estimators: 200
+  max_depth: 10
+  min_samples_leaf: 2
+  output_dir: "./results_rf"

@@ -13,7 +13,7 @@ def main():
         "-i",
         "--input",
         dest="input_file",
-        # type=str,
+        type=str,
         required=True,
         help="Input par file to pass",
     )
