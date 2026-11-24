@@ -6,17 +6,17 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-try:
-    import IPython
-    working_directory = "/".join(
-            IPython.extract_module_locals()[1]["__vsc_ipynb_file__"].split("/")[:-1]
-        )
-    print("Setting working directory to: ", working_directory)
-    print(os.chdir(working_directory))
-except Exception as e:
-    print("It was impossible to set your directory as the current one because of the following message")
-    print(e)
-    print("The working directory is: ", os.getcwd())
+# try:
+#     import IPython
+#     working_directory = "/".join(
+#             IPython.extract_module_locals()[1]["__vsc_ipynb_file__"].split("/")[:-1]
+#         )
+#     print("Setting working directory to: ", working_directory)
+#     print(os.chdir(working_directory))
+# except Exception as e:
+#     print("It was impossible to set your directory as the current one because of the following message")
+#     print(e)
+#     print("The working directory is: ", os.getcwd())
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -36,14 +36,22 @@ np.random.seed(RANDOM_STATE)
 class RandomForestDetection:
     def __init__(self, p_dictionary):
 
-        self.csv = p_dictionary.get('csv_path')
-        self.n_bins = p_dictionary.get('n_bins',1000) 
-        self.samples = 350   
+        self.csv_path = p_dictionary.get('dataset_path')
+        self.n_bins = p_dictionary.get('n_bins', 1000)   
         self.max_depth = p_dictionary.get('max_depth')
         self.n_estimators = p_dictionary.get('n_estimators')
-        self.use_scaler = p_dictionary.get('scalar')
-        self.samples_per_class = p_dictionary.get('samples_per_class')
+        self.use_scaler = p_dictionary.get('scalar', False)
+        self.samples_per_class = p_dictionary.get('samples_per_class', 350)
+        self.test_size = p_dictionary.get('test_size', 0.2)
+        self.output_dir = p_dictionary.get('output_dir', "./results_rf")
 
+        try:
+            os.makedirs(self.output_dir)
+        except FileExistsError:
+            # directory already exists
+            pass
+
+        # print(self.n_estimators)
 
     def create_balanced_dataset(self, X, y):    
         X0 = X[y == 0]
@@ -87,7 +95,7 @@ class RandomForestDetection:
     def load_data(self):
         
         df = pd.read_csv(self.csv_path)
-        print(f"Dataset: {df.shape[0]} samples")
+        # print(f"Dataset: {df.shape[0]} samples")
         
         flux_cols = [f'flux_{i:04d}' for i in range(self.n_bins)]
         flux_err_cols = [f'flux_err_{i:04d}' for i in range(self.n_bins)]
@@ -98,39 +106,39 @@ class RandomForestDetection:
         metadata_cols = ['toi_name', 'tic', 'label', 'disp', 'period_d', 't0_bjd', 'dur_hr', 'sector']
         metadata = df[metadata_cols]
         
-        print("Original distribution:")
-        print(f"  Class 0: {(y==0).sum()}, Class 1: {(y==1).sum()}")
-        if (y==0).sum() > 0:
-            print(f"  Ratio: {(y==1).sum() / (y==0).sum():.2f}:1")
+        # print("Original distribution:")
+        # print(f"  Class 0: {(y==0).sum()}, Class 1: {(y==1).sum()}")
+        # if (y==0).sum() > 0:
+        #     print(f"  Ratio: {(y==1).sum() / (y==0).sum():.2f}:1")
         
         X_train, X_test, y_train, y_test, X_err_train, X_err_test, idx_train, idx_test = train_test_split(
             X, y, X_err, np.arange(len(y)),
-            test_size=0.2,
+            test_size=self.test_size,
             random_state=RANDOM_STATE,
             stratify=y
         )
-        print(f"Initial split - Train: {len(X_train)}, Test: {len(X_test)}")
+        # print(f"Initial split - Train: {len(X_train)}, Test: {len(X_test)}")
         
         # Balance training set
         X_train, y_train = self.create_balanced_dataset(X_train, y_train)
         
         scaler = None
-        if use_scaler:
+        if self.use_scaler:
             scaler = StandardScaler()
             X_train = scaler.fit_transform(X_train)
             X_test = scaler.transform(X_test)
-            print(f"Train: mean={X_train.mean():.6f}, std={X_train.std():.6f}")
-            print(f"Test:  mean={X_test.mean():.6f}, std={X_test.std():.6f}")
+            # print(f"Train: mean={X_train.mean():.6f}, std={X_train.std():.6f}")
+            # print(f"Test:  mean={X_test.mean():.6f}, std={X_test.std():.6f}")
         
         metadata_test = metadata.iloc[idx_test].reset_index(drop=True)
-        print(f"Final - X_train: {X_train.shape}, X_test: {X_test.shape}")
-        print(f"Train dist: 0={(y_train==0).sum()}, 1={(y_train==1).sum()}")
+        # print(f"Final - X_train: {X_train.shape}, X_test: {X_test.shape}")
+        # print(f"Train dist: 0={(y_train==0).sum()}, 1={(y_train==1).sum()}")
         
         # Return X_test copy (for optional inverse transform plotting if scaler is used)
         return X_train, X_test, y_train, y_test, metadata_test, X_test.copy(), X_err_test, scaler
 
 
-    def build_random_forest(
+    def build_random_forest(self,
         n_estimators=500,
         max_depth=None,
         min_samples_leaf=1,
@@ -154,19 +162,16 @@ class RandomForestDetection:
         )
         return rf
 
-    def train_model(model, X_train, y_train):
+    def train_model(self, model, X_train, y_train):
         model.fit(X_train, y_train)
-        if hasattr(model, 'oob_score_') and model.oob_score_ is not None:
-            print(f"OOB Score: {model.oob_score_:.4f}")
+        # if hasattr(model, 'oob_score_') and model.oob_score_ is not None:
+        #     print(f"OOB Score: {model.oob_score_:.4f}")
         return model
 
 
     '''questi print salvali su file'''
-    def evaluate_with_optimal_threshold(model, X_test, y_test):
-        print("\n" + "="*70)
-        print("THRESHOLD OPTIMIZATION & EVALUATION")
-        print("="*70)
-        
+    def evaluate_with_optimal_threshold(self, model, X_test, y_test):
+
         proba = model.predict_proba(X_test)[:, 1]
         fpr, tpr, thresholds = roc_curve(y_test, proba)
         j_scores = tpr - fpr
@@ -179,20 +184,31 @@ class RandomForestDetection:
         auc = roc_auc_score(y_test, proba)
         acc_default = accuracy_score(y_test, y_pred_default)
         acc_best = accuracy_score(y_test, y_pred_best)
+
+        out_txt = self.output_dir / 'classifier_statistics.txt'
+        with open(out_txt, 'w') as f:
+            if hasattr(model, 'oob_score_') and model.oob_score_ is not None:
+                print(f"OOB Score: {model.oob_score_:.4f}", file=f)
+            print("\n" + "="*70, file=f)
+            print("THRESHOLD OPTIMIZATION & EVALUATION", file=f)
+            print("="*70, file=f)
+            
+            print(f"Optimal threshold: {best_thresh:.4f} (default=0.5)", file=f)
+            print(f"  At this threshold: TPR={tpr[best_idx]:.4f}, FPR={fpr[best_idx]:.4f}", file=f)
+            print(f"AUC-ROC: {auc:.4f}", file=f)
+            print(f"Accuracy @0.5: {acc_default:.4f} ({acc_default*100:.2f}%)", file=f)
+            print(f"Accuracy @{best_thresh:.4f}: {acc_best:.4f} ({acc_best*100:.2f}%)", file=f)
+            
+            print("\nClassification report (optimal threshold):", file=f)
+            print(classification_report(y_test, y_pred_best, target_names=['Non-Planet','Planet'], digits=4, zero_division=0), file=f)
         
-        print(f"Optimal threshold: {best_thresh:.4f} (default=0.5)")
-        print(f"  At this threshold: TPR={tpr[best_idx]:.4f}, FPR={fpr[best_idx]:.4f}")
-        print(f"AUC-ROC: {auc:.4f}")
-        print(f"Accuracy @0.5: {acc_default:.4f} ({acc_default*100:.2f}%)")
-        print(f"Accuracy @{best_thresh:.4f}: {acc_best:.4f} ({acc_best*100:.2f}%)")
-        
-        print("\nClassification report (optimal threshold):")
-        print(classification_report(y_test, y_pred_best, target_names=['Non-Planet','Planet'], digits=4, zero_division=0))
-        
+            f.close()
+        print(f'Classifier statistics saved to {out_txt}')
+
         return y_pred_best, proba, best_thresh, (fpr, tpr, thresholds)
 
 
-    def plot_confusion_matrix_image(y_true, y_pred, threshold, save_path='confusion_matrix_rf.png'):
+    def plot_confusion_matrix_image(self, y_true, y_pred, threshold, save_path='confusion_matrix_rf.png'):
         cm = confusion_matrix(y_true, y_pred)
         fig = plt.figure(figsize=(6, 5))
         ax = plt.gca()
@@ -212,11 +228,11 @@ class RandomForestDetection:
                 ax.text(j, i, f"{count}\n({pct:.1f}%)", ha='center', va='center')
         plt.tight_layout()
         plt.savefig(save_path, dpi=300)
-        print(f"Saved: {save_path}")
+        # print(f"Saved: {save_path}")
         plt.close(fig)
 
 
-    def plot_roc_curve(y_true, proba, save_path='roc_curve_rf.png'):
+    def plot_roc_curve(self, y_true, proba, save_path='roc_curve_rf.png'):
         fpr, tpr, _ = roc_curve(y_true, proba)
         auc = roc_auc_score(y_true, proba)
         fig = plt.figure(figsize=(6, 5))
@@ -229,11 +245,11 @@ class RandomForestDetection:
         ax.grid(alpha=0.3)
         plt.tight_layout()
         plt.savefig(save_path, dpi=300)
-        print(f"Saved: {save_path}")
+        # print(f"Saved: {save_path}")
         plt.close(fig)
 
 
-    def plot_pr_curve(y_true, proba, save_path='pr_curve_rf.png'):
+    def plot_pr_curve(self, y_true, proba, save_path='pr_curve_rf.png'):
         precision, recall, _ = precision_recall_curve(y_true, proba)
         ap = average_precision_score(y_true, proba)
         fig = plt.figure(figsize=(6, 5))
@@ -245,11 +261,11 @@ class RandomForestDetection:
         ax.grid(alpha=0.3)
         plt.tight_layout()
         plt.savefig(save_path, dpi=300)
-        print(f"Saved: {save_path}")
+        # print(f"Saved: {save_path}")
         plt.close(fig)
 
 
-    def plot_probability_histograms(y_true, proba, save_path='probability_hist_RF.png'):
+    def plot_probability_histograms(self, y_true, proba, save_path='probability_hist_RF.png'):
         fig = plt.figure(figsize=(6, 5))
         ax = plt.gca()
         ax.hist(proba[y_true==0], bins=30, alpha=0.6, label='Non-Planet', density=True)
@@ -261,52 +277,19 @@ class RandomForestDetection:
         ax.grid(alpha=0.3)
         plt.tight_layout()
         plt.savefig(save_path, dpi=300)
-        print(f"Saved: {save_path}")
+        # print(f"Saved: {save_path}")
         plt.close(fig)
 
-
-    def plot_lightcurve_sample(idx, X_test_standardized, X_err_test, metadata_test, scaler=None, proba=None, y_true=None, y_pred=None, save_prefix='sample_lightcurve_RF'):
-        # Make a single-figure plot for one sample (no subplots)
-        x_std = X_test_standardized[idx].reshape(1, -1)
-        if scaler is not None:
-            x_orig = scaler.inverse_transform(x_std).flatten()
-            yerr = X_err_test[idx]
-        else:
-            x_orig = x_std.flatten()
-            yerr = X_err_test[idx]
-        
-        fig = plt.figure(figsize=(10, 4))
-        ax = plt.gca()
-        ax.errorbar(np.arange(len(x_orig)), x_orig, yerr=yerr, fmt='o', markersize=2, alpha=0.6)
-        ax.axhline(np.median(x_orig), linestyle='--', linewidth=1)
-        ax.set_xlabel('Time Bin')
-        ax.set_ylabel('Flux')
-        
-        toi = metadata_test.loc[idx, 'toi_name']
-        tic = metadata_test.loc[idx, 'tic']
-        disp = metadata_test.loc[idx, 'disp']
-        sector = metadata_test.loc[idx, 'sector']
-        
-        tstr = f'TOI {toi} (TIC {tic}, {disp}) - Sector {sector}'
-        if proba is not None and y_true is not None and y_pred is not None:
-            pred_str = 'Transit' if y_pred[idx]==1 else 'Non-Transit'
-            true_str = 'Transit' if y_true[idx]==1 else 'Non-Transit'
-            tstr += f'\nTrue: {true_str} | Pred: {pred_str} (p={proba[idx]:.3f})'
-        
-        ax.set_title(tstr)
-        ax.grid(alpha=0.3)
-        plt.tight_layout()
-        path = f"{save_prefix}_{idx}.png"
-        plt.savefig(path, dpi=300)
-        print(f"Saved: {path}")
-        plt.close(fig)
 
     def one_click(self):
 
-        X_train, X_test, y_train, y_test, metadata_test, X_test_std_copy, X_err_test, scaler = self.load_data(
-        csv_path=self.csv, n_bins=self.n_bins, use_scaler=self.scaler, samples_per_class=self.samples_per_class
-        )
+        print('Working...')
+        # X_train, X_test, y_train, y_test, metadata_test, X_test_std_copy, X_err_test, scaler = self.load_data(
+        # csv_path=self.csv_path, n_bins=self.n_bins, use_scaler=self.use_scaler, samples_per_class=self.samples_per_class
+        # )
+        X_train, X_test, y_train, y_test, metadata_test, X_test_std_copy, X_err_test, scaler = self.load_data()
 
+        # print('bbbbbbbbbbbbbbbbb', self.n_estimators)
         # Build RF model
         rf = self.build_random_forest(
             n_estimators=self.n_estimators,
@@ -327,12 +310,15 @@ class RandomForestDetection:
         y_pred_opt, proba_test, best_thresh, roc_tuple = self.evaluate_with_optimal_threshold(rf, X_test, y_test)
 
         # Visualizations
-        self.plot_confusion_matrix_image(y_test, y_pred_opt, best_thresh, save_path='confusion_matrix_rf.png')
-        self.plot_roc_curve(y_test, proba_test, save_path='roc_curve_rf.png')
-        self.plot_pr_curve(y_test, proba_test, save_path='pr_curve_rf.png')
-        self.plot_probability_histograms(y_test, proba_test, save_path='probability_hist_RF.png')
+        self.plot_confusion_matrix_image(y_test, y_pred_opt, best_thresh, save_path=self.output_dir / 'confusion_matrix_rf.png')
+        self.plot_roc_curve(y_test, proba_test, save_path=self.output_dir / 'roc_curve_rf.png')
+        self.plot_pr_curve(y_test, proba_test, save_path=self.output_dir / 'pr_curve_rf.png')
+        self.plot_probability_histograms(y_test, proba_test, save_path=self.output_dir / 'probability_hist_RF.png')
+
+        # aggiungi questa cosa nelle funzioni di plot
+        print(f'All figure saved in {self.output_dir}') 
 
         # Persist the model and the optimal threshold
-        joblib.dump(rf, 'tess_rf_model.joblib')
-        np.save('rf_optimal_threshold.npy', best_thresh)
+        joblib.dump(rf, self.output_dir / 'tess_rf_model.joblib')
+        np.save(self.output_dir / 'rf_optimal_threshold.npy', best_thresh)
         print("Saved: tess_rf_model.joblib, rf_optimal_threshold.npy")

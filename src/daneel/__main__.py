@@ -45,6 +45,7 @@ def main():
         parser.error("detection is not implemented yet; use --transit")
     elif args.detect == "rf":
         rf = RandomForestDetection(input_pars)
+        rf.one_click()
     elif args.atmosphere:
         parser.error("atmospheric characterisation is not implemented yet; use --transit")
 
