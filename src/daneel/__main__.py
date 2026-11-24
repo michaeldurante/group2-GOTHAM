@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from daneel.detection import TransitClass
 from daneel.parameters import Parameters
 from daneel.detection import RandomForestDetection
+from daneel.dream import GenerativeAdversarialNetwork
 
 
 def main():
@@ -23,6 +24,7 @@ def main():
     actions.add_argument("-t", "--transit", action="store_true", help="Plot a transit light curve")
     actions.add_argument("-d", "--detect", nargs='?', const=True, default=None, choices=['rf'], help="Run exoplanet detection (use '-d rf' or '--detection rf' for Random Forest)")
     actions.add_argument("-a", "--atmosphere", action="store_true", help="Run atmospheric characterisation")
+    actions.add_argument("--dream", action='store_true', help='Run Generative Adversarial Network and generate sample light curves')
     parser.add_argument("-o", "--output", default="lc.png", help="Output image for --transit")
     parser.add_argument("-s","--show", default=False, action="store_true", help="Show the plot of the light curve. Hides computation time.")
     
@@ -46,6 +48,10 @@ def main():
     elif args.detect == "rf":
         rf = RandomForestDetection(input_pars)
         rf.one_click()
+    elif args.dream:
+        gan = GenerativeAdversarialNetwork(input_pars['dream'])
+        gan.train()
+        gan.generate_and_plot(output_path="synthetic_light_curves.png")
     elif args.atmosphere:
         parser.error("atmospheric characterisation is not implemented yet; use --transit")
 
