@@ -152,7 +152,9 @@ class GenerativeAdversarialNetwork:
             return 2.0 * (arr - a_min) / (a_max - a_min + 1e-8) - 1.0
 
         flux_norm = scale_to_tanh(flux)
-        err_norm = scale_to_tanh(err)
+
+        ############################ *0.2 -> test per i pesi #########################
+        err_norm = scale_to_tanh(err) * 0.2
         curves_norm = np.concatenate([flux_norm, err_norm], axis=1)
 
         # convert into torch tensor(N, 1, 44, 44) and create dataset
@@ -160,8 +162,8 @@ class GenerativeAdversarialNetwork:
             -1, self.nc, self.image_size, self.image_size
         )
 
-        self.dataset = torch.utils.data.TensorDataset(tensor_data)
-        self.dataloader = torch.utils.data.DataLoader(
+        self.dataset = TensorDataset(tensor_data)
+        self.dataloader = DataLoader(
             self.dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.workers
         )
 
@@ -230,7 +232,7 @@ class GenerativeAdversarialNetwork:
                 )
 
 ################# due funzioni per il plot per provare cose diverse #############
-    def generate_and_plot2(self, output_path="synthetic_light_curves.png"):
+    def ggenerate_and_plot(self, output_path="synthetic_light_curves.png"):
         '''
         Generate synthetic 44x44 outputs, reconstruct 1D flux and error arrays,
         denormalize to physical scale, and plot scatter light curves with error bars.
@@ -284,7 +286,7 @@ class GenerativeAdversarialNetwork:
         plt.close(fig)
         print(f"Saved reconstructed 1D light curves to: {out_file.resolve()}")
     
-    def generate_and_plot(self, output_path="synthetic_light_curves.png"):
+    def generate_and_plot2(self, output_path="synthetic_light_curves.png"):
         '''
         Generate synthetic 44x44 outputs, reconstruct 1D flux (in [-1, 1]) and
         proportionally scaled error bars, and plot scatter light curves with rolling mean.
@@ -319,22 +321,22 @@ class GenerativeAdversarialNetwork:
             # Media mobile su 15 punti per evidenziare il profilo del transito
             smooth_flux = pd.Series(flux_1d).rolling(window=15, center=True, min_periods=1).mean()
 
-            axes[idx].errorbar(
-                time_steps,
-                flux_1d,
-                yerr=err_1d,
-                fmt="o",
-                markersize=2.5,
-                elinewidth=0.6,
-                capsize=0,
-                alpha=0.65,
-                color="tab:blue",
-                ecolor="tab:gray",
-                label="Generated points",
-            )
+            # axes[idx].errorbar(
+            #     time_steps,
+            #     flux_1d,
+            #     yerr=err_1d,
+            #     fmt="o",
+            #     markersize=2.5,
+            #     elinewidth=0.6,
+            #     capsize=0,
+            #     alpha=0.65,
+            #     color="tab:blue",
+            #     ecolor="tab:gray",
+            #     label="Generated points",
+            # )
             axes[idx].plot(
                 time_steps,
-                smooth_flux,
+                flux_1d,
                 color="crimson",
                 lw=1.8,
                 label="Rolling mean (15 pts)",
@@ -344,6 +346,86 @@ class GenerativeAdversarialNetwork:
             axes[idx].grid(True, alpha=0.25)
 
         axes[0].legend(loc="upper right")
+        axes[-1].set_xlabel("Time Cadence (0–967)")
+
+        plt.tight_layout()
+        out_file = Path(output_path)
+        plt.savefig(out_file, dpi=150)
+        plt.close(fig)
+        print(f"Saved reconstructed 1D light curves to: {out_file.resolve()}")
+
+    def generate_and_plot(self, num_samples=4, output_path="synthetic_light_curves.png"):
+        '''
+        Generate synthetic 44x44 outputs, reconstruct 1D relative flux anchored
+        at a baseline of 1.0, and plot with a shaded 1-sigma uncertainty band.
+        '''
+        window = 5
+        self.netG.eval()
+
+        with torch.no_grad():
+            noise = torch.randn(num_samples, self.nz, 1, 1, device=self.device)
+            fake_2d = self.netG(noise).cpu().numpy()
+
+        f_min = getattr(self, "flux_min", 0.98)
+        f_max = getattr(self, "flux_max", 1.01)
+        e_min = getattr(self, "err_min", 0.0005)
+        e_max = getattr(self, "err_max", 0.003)
+
+        time_steps = np.arange(968)
+        fig, axes = plt.subplots(num_samples, 1, figsize=(11, 2.8 * num_samples), sharex=True)
+        if num_samples == 1:
+            axes = [axes]
+
+        for idx in range(num_samples):
+            flat_1d = fake_2d[idx].reshape(-1)
+            flux_norm = flat_1d[:968]
+
+            ######################## test per i pesi #################################
+            # err_norm = flat_1d[968:]
+            err_norm = np.clip(flat_1d[968:] / 0.2, -1.0, 1.0)
+
+            # Riporta alla scala fisica e ancora la baseline (mediana) a 1.0
+            flux_phys = 0.5 * (flux_norm + 1.0) * (f_max - f_min) + f_min
+            err_phys = np.clip(0.5 * (err_norm + 1.0) * (e_max - e_min) + e_min, 0.0, None)
+
+            baseline = np.median(flux_phys)
+            flux_rel = flux_phys / baseline
+            err_rel = err_phys / baseline
+
+            # Media mobile per far risaltare eventuali dip di transito
+            smooth_flux = pd.Series(flux_rel).rolling(window=window, center=True, min_periods=1).mean()
+
+            # Banda d'errore +/- 1 sigma + linea continua della curva di luce
+            axes[idx].fill_between(
+                time_steps,
+                flux_rel - err_rel,
+                flux_rel + err_rel,
+                color="tab:blue",
+                alpha=0.22,
+                label="±1σ uncertainty",
+            )
+            axes[idx].plot(
+                time_steps,
+                flux_rel,
+                color="tab:blue",
+                lw=0.85,
+                alpha=0.85,
+                label="Relative flux",
+            )
+            axes[idx].plot(
+                time_steps,
+                smooth_flux,
+                color="crimson",
+                lw=1.6,
+                label=f"Rolling mean ({window} pts)",
+            )
+            axes[idx].axhline(1.0, color="black", ls="--", lw=0.8, alpha=0.5)
+
+            axes[idx].set_ylabel("Relative Flux")
+            axes[idx].set_title(f"Synthetic Transit Light Curve #{idx + 1}")
+            axes[idx].grid(True, alpha=0.25)
+
+        axes[0].legend(loc="upper right", ncol=3, fontsize=8.5)
         axes[-1].set_xlabel("Time Cadence (0–967)")
 
         plt.tight_layout()
