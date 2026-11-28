@@ -2,10 +2,13 @@ cnn:
   dataset_path: assignment_2_random_forest/tess_data.csv
   focal_gamma: 2.5
   focal_alpha: 0.75
-  samples_per_class: 400
-  epochs: 100
+  samples_per_class: 350
+  epochs: 5 # 100
   batch_size:
   n_bins: 1000
+  n_samples: 8  # for the number of plots in the plot lc with predictions
+  output_path: 'sample_lightcurves_predictions.png' # for the plots
+  output_dir: "./results_cnn" # for the model and the confusion matrix
   # queste sotto vediamo
   conv_filters: [64, 128, 256]
   kernel_size: 3

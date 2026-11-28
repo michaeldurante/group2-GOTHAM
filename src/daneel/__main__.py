@@ -9,7 +9,7 @@ from daneel.parameters import Parameters
 # from daneel.detection import ConvolutionalNeuralNetwork
 # from daneel.dream import GenerativeAdversarialNetwork
 
-
+# add 'e' as a choice for --show
 def main():
     parser = argparse.ArgumentParser(description="Model and analyse exoplanet transits.")
 
@@ -24,13 +24,13 @@ def main():
 
     actions = parser.add_mutually_exclusive_group(required=True)
     actions.add_argument("-t", "--transit", action="store_true", help="Plot a transit light curve")
-    actions.add_argument("-d", "--detect", nargs='?', const=True, default=None, choices=['rf', 'cnn'], help="Run exoplanet detection (use '-d rf' or '--detection rf' for Random Forest)")
+    actions.add_argument("-d", "--detect", nargs='?', const=True, default=None, choices=['rf', 'cnn'], help="Run exoplanet detection (use '-d rf' or '--detection rf' for Random Forest and '-d cnn' for Convolutional Neural Network)")
     actions.add_argument("-a", "--atmosphere", action="store_true", help="Run atmospheric characterisation")
     actions.add_argument("--dream", action='store_true', help='Run Generative Adversarial Network and generate sample light curves')
     parser.add_argument("-o", "--output", default="lc.png", help="Output image for --transit")
-    parser.add_argument("-s","--show", default=False, action="store_true", help="Show the plot of the light curve. Hides computation time.")
+    parser.add_argument("-s","--show", nargs='?', const=True, default=None, choices=['est'] , help="Show the plot of the light curve (use '-s est' to get an estimate of the depth of the transit). This command doesn't show computation time. ")
     
-    parser.add_argument("-e","--estimate", default=False, action="store_true", help="Quick estimate of transit depth, only if --show.") 
+    # parser.add_argument("-e","--estimate", default=False, action="store_true", help="Quick estimate of transit depth, only if --show.") 
 
     args = parser.parse_args()
 
@@ -43,7 +43,7 @@ def main():
     if args.transit:
         from daneel.detection import TransitClass
         transit = TransitClass(input_pars['transit'])
-        if args.estimate and args.show:
+        if args.show == 'est':
             transit.get_transit_depth()
         transit.plot_transit(args.show, args.output)
     elif args.detect == True:

@@ -65,9 +65,12 @@ class TransitClass:
         ax.set_xlabel('Time from central transit [days]', fontsize=12, color='black') 
         ax.set_ylabel('Normalized Flux', fontsize=12, color='black') 
         ax.grid(True, color='lightgray', linestyle='--', linewidth=0.5, alpha=0.5)  
-        ax.set_title('Comparison of Exoplanets Transit')  
+        if len(self.planets_data) > 1:
+            ax.set_title('Comparison of Exoplanets Transit')  
+        else:
+            ax.set_title(f'Light curve of {planet["name"]}')
         ax.legend(loc='lower left', frameon = False)  
-        plt.tight_layout()  
+        plt.tight_layout()
         plt.savefig(output_file, dpi=300)
         if show:
             plt.show()
@@ -80,4 +83,4 @@ class TransitClass:
         # Quick, approximate transit depth for an un-darkened stellar disc.
         for planet in self.planets_data:
             estimate = planet['params'].rp**2
-            print(f"Pianeta '{planet['name']}': stima flusso = {1 - estimate:.4f}")
+            print(f"Planet '{planet['name']}': Estimate of transit depth = {1 - estimate:.4f}")

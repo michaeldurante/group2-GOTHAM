@@ -37,30 +37,40 @@ class ConvolutionalNeuralNetwork:
     def __init__(self, p_dictionary):        
         self.alpha = p_dictionary.get('focal_alpha', 0.75)
         self.gamma = p_dictionary.get('focal_gamma', 2.5)
+        self.epochs = p_dictionary.get('epochs', 100)
         self.samples_per_class = p_dictionary.get('samples_per_class', 400)
         self.n_bins = p_dictionary.get('n_bins', 1000)
         self.dataset_path = p_dictionary.get('dataset_path')
+        self.n_samples = p_dictionary.get('n_samples', 8)
+        self.output_path = p_dictionary.get('ouput_path', 'sample_lightcurves_predictions.png')
+        self.output_dir = p_dictionary.get('output_dir', './results_cnn')
+
+        try:
+            os.makedirs(self.output_dir)
+        except FileExistsError:
+            # directory already exists
+            pass
         
 
     def focal_loss(self, y_true, y_pred):
         epsilon = K.epsilon()
-        y_pred = K.clip(y_pred, epsilon, 1.0 - epsilon)
+        y_pred = tf.clip_by_value(y_pred, epsilon, 1.0 - epsilon)
         
         pt = tf.where(tf.equal(y_true, 1), y_pred, 1 - y_pred)
         alpha_factor = tf.where(tf.equal(y_true, 1), self.alpha, 1 - self.alpha)
-        focal_weight = alpha_factor * K.pow(1 - pt, self.gamma)
-        bce = -K.log(pt)
-        return K.mean(focal_weight * bce)
+        focal_weight = alpha_factor * tf.math.pow(1 - pt, self.gamma)
+        bce = -tf.math.log(pt)
+        return tf.reduce_mean(focal_weight * bce)
 
 
-    def create_balanced_dataset(self, X, y):
+    def create_balanced_dataset(self):
         """Create a perfectly balanced dataset via lightweight augmentations."""
         print("\n" + "="*70)
         print("CREATING BALANCED DATASET")
         print("="*70)
         
-        X_class0 = X[y == 0]
-        X_class1 = X[y == 1]
+        X_class0 = self.X_train[self.y_train == 0]
+        X_class1 = self.X_train[self.y_train == 1]
         
         print(f"Original - Class 0: {len(X_class0)}, Class 1: {len(X_class1)}")
         
@@ -136,42 +146,42 @@ class ConvolutionalNeuralNetwork:
             print(f"  Ratio: {(y==1).sum() / (y==0).sum():.2f}:1")
         
         # Train/test split (keep errors aligned; stratify to preserve class ratio)
-        X_train, X_test, y_train, y_test, X_err_train, X_err_test, idx_train, idx_test = train_test_split(
+        self.X_train, self.X_test, self.y_train, self.y_test, self.X_err_train, self.X_err_test, _, idx_test = train_test_split(
             X, y, X_err, np.arange(len(y)),
             test_size=0.2,
             random_state=42,
             stratify=y
         )
         
-        print(f"\nInitial split - Train: {len(X_train)}, Test: {len(X_test)}")
+        print(f"\nInitial split - Train: {len(self.X_train)}, Test: {len(self.X_test)}")
         
         # Balance training set
-        X_train, y_train = self.create_balanced_dataset(X_train, y_train, samples_per_class=350)
+        self.X_train, self.y_train = self.create_balanced_dataset()
         
         # Standardize (fit on train, apply to test)
         print("\n" + "="*70)
         print("STANDARDIZATION")
         print("="*70)
         
-        scaler = StandardScaler()
-        X_train = scaler.fit_transform(X_train)
-        X_test = scaler.transform(X_test)
+        self.scaler = StandardScaler()
+        self.X_train = self.scaler.fit_transform(self.X_train)
+        self.X_test = self.scaler.transform(self.X_test)
         
-        print(f"Train: mean={X_train.mean():.6f}, std={X_train.std():.6f}")
-        print(f"Test:  mean={X_test.mean():.6f}, std={X_test.std():.6f}")
+        print(f"Train: mean={self.X_train.mean():.6f}, std={self.X_train.std():.6f}")
+        print(f"Test:  mean={self.X_test.mean():.6f}, std={self.X_test.std():.6f}")
         
         # Reshape for Conv1D: (samples, timesteps, channels)
-        X_train = X_train.reshape(-1, self.n_bins, 1)
-        X_test = X_test.reshape(-1, self.n_bins, 1)
+        self.X_train = self.X_train.reshape(-1, self.n_bins, 1)
+        self.X_test = self.X_test.reshape(-1, self.n_bins, 1)
         
-        metadata_test = metadata.iloc[idx_test].reset_index(drop=True)
+        self.metadata_test = metadata.iloc[idx_test].reset_index(drop=True)
         
-        print(f"\nFinal - X_train: {X_train.shape}, X_test: {X_test.shape}")
-        print(f"Train dist: 0={( y_train==0).sum()}, 1={(y_train==1).sum()}")
-        
+        print(f"\nFinal - X_train: {self.X_train.shape}, X_test: {self.X_test.shape}")
+        print(f"Train dist: 0={( self.y_train==0).sum()}, 1={(self.y_train==1).sum()}")
+
+        self.X_test_orig = self.X_test.copy()
         # Return standardized test for model input, but also return the standardized
         # copy (X_test_orig) so we can inverse-transform for plotting with error bars.
-        return X_train, X_test, y_train, y_test, metadata_test, X_test.copy(), X_err_test, scaler
 
 
     def build_simple_cnn(self):
@@ -180,7 +190,7 @@ class ConvolutionalNeuralNetwork:
         print("BUILDING SIMPLIFIED CNN")
         print("="*70)
         
-        model = models.Sequential([
+        self.model = models.Sequential([
             layers.Input(shape=(self.n_bins, 1)),
             
             # Feature extraction
@@ -210,21 +220,20 @@ class ConvolutionalNeuralNetwork:
             layers.Dense(1, activation='sigmoid')
         ])
         
-        model.compile(
+        self.model.compile(
             optimizer=keras.optimizers.Adam(learning_rate=0.0005),
-            loss=self.focal_loss(gamma=2.5, alpha=0.75),
+            loss=self.focal_loss,
             metrics=['accuracy',
                     keras.metrics.Precision(name='precision'),
                     keras.metrics.Recall(name='recall'),
                     keras.metrics.AUC(name='auc')]
         )
         
-        model.summary()
+        self.model.summary()
         print("\nUsing Focal Loss (gamma=2.5, alpha=0.75)")
-        return model
 
 
-    def train_model(self, model, X_train, y_train, X_val, y_val):
+    def train_model(self):
         """Train the model with AUC-centric callbacks."""
         print("\n" + "="*70)
         print("TRAINING")
@@ -246,8 +255,7 @@ class ConvolutionalNeuralNetwork:
                 mode='max',
                 verbose=1
             ),
-            ModelCheckpoint(
-                'best_model_final.keras',
+            ModelCheckpoint(self.output_dir + '/best_model_final.keras',
                 monitor='val_auc',
                 save_best_only=True,
                 mode='max',
@@ -255,79 +263,74 @@ class ConvolutionalNeuralNetwork:
             )
         ]
         
-        history = model.fit(
-            X_train, y_train,
-            validation_data=(X_val, y_val),
+        self.history = self.model.fit(
+            self.X_train, self.y_train,
+            validation_data=(self.X_test, self.y_test),
             epochs=self.epochs,
             batch_size=32,
             callbacks=callbacks,
             verbose=1
         )
-        return history
 
 
-    def evaluate_with_optimal_threshold(self, model, X_test, y_test):
+    def evaluate_with_optimal_threshold(self):
         """Find an optimal threshold from ROC (Youden's J) and evaluate."""
         print("\n" + "="*70)
         print("THRESHOLD OPTIMIZATION & EVALUATION")
         print("="*70)
         
-        y_pred_proba = model.predict(X_test, verbose=0).flatten()
-        fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba)
+        self.y_pred_proba = self.model.predict(self.X_test, verbose=0).flatten()
+        fpr, tpr, thresholds = roc_curve(self.y_test, self.y_pred_proba)
         
         # Youden's J statistic
         j_scores = tpr - fpr
         optimal_idx = np.argmax(j_scores)
-        optimal_threshold = thresholds[optimal_idx]
+        self.optimal_threshold = thresholds[optimal_idx]
         
-        print(f"\nOptimal threshold: {optimal_threshold:.4f} (default=0.5)")
+        print(f"\nOptimal threshold: {self.optimal_threshold:.4f} (default=0.5)")
         print(f"  At this threshold: TPR={tpr[optimal_idx]:.4f}, FPR={fpr[optimal_idx]:.4f}")
         
         # Predictions with optimal vs default thresholds
-        y_pred_optimal = (y_pred_proba >= optimal_threshold).astype(int)
-        y_pred_default = (y_pred_proba >= 0.5).astype(int)
+        self.y_pred_optimal = (self.y_pred_proba >= self.optimal_threshold).astype(int)
+        y_pred_default = (self.y_pred_proba >= 0.5).astype(int)
         
         # Metrics
-        acc_optimal = accuracy_score(y_test, y_pred_optimal)
-        acc_default = accuracy_score(y_test, y_pred_default)
-        auc = roc_auc_score(y_test, y_pred_proba)
+        acc_optimal = accuracy_score(self.y_test, self.y_pred_optimal)
+        acc_default = accuracy_score(self.y_test, y_pred_default)
+        auc = roc_auc_score(self.y_test, self.y_pred_proba)
         
         print("\nResults:")
         print(f"  AUC-ROC: {auc:.4f}")
         print(f"  Accuracy (default threshold=0.5): {acc_default:.4f} ({acc_default*100:.2f}%)")
-        print(f"  Accuracy (optimal threshold={optimal_threshold:.4f}): {acc_optimal:.4f} ({acc_optimal*100:.2f}%)")
+        print(f"  Accuracy (optimal threshold={self.optimal_threshold:.4f}): {acc_optimal:.4f} ({acc_optimal*100:.2f}%)")
         
         print("\nWith optimal threshold:")
-        print(classification_report(y_test, y_pred_optimal,
+        print(classification_report(self.y_test, self.y_pred_optimal,
                                     target_names=['Non-Planet', 'Planet'],
                                     digits=4,
                                     zero_division=0))
         
         print("\nPrediction distribution (optimal threshold):")
-        print(f"  Predicted 0: {(y_pred_optimal == 0).sum()}")
-        print(f"  Predicted 1: {(y_pred_optimal == 1).sum()}")
+        print(f"  Predicted 0: {(self.y_pred_optimal == 0).sum()}")
+        print(f"  Predicted 1: {(self.y_pred_optimal == 1).sum()}")
         print("True distribution:")
-        print(f"  True 0: {(y_test == 0).sum()}")
-        print(f"  True 1: {(y_test == 1).sum()}")
-        
-        return y_pred_optimal, y_pred_proba, optimal_threshold
+        print(f"  True 0: {(self.y_test == 0).sum()}")
+        print(f"  True 1: {(self.y_test == 1).sum()}")
 
 
-    def plot_lightcurves_with_predictions(self, X_test_orig, X_err_test, y_test, y_pred, y_pred_proba, 
-                                       metadata_test, scaler, threshold, n_samples=8,
-                                       save_path='sample_lightcurves_predictions.png'):
+    def plot_lightcurves_with_predictions(self):
         """Plot light curves with error bars and prediction info; save to file."""
         print("\n" + "="*70)
-        print(f"PLOTTING LIGHTCURVES WITH PREDICTIONS (n={n_samples})")
+        print(f"PLOTTING LIGHTCURVES WITH PREDICTIONS (n={self.n_samples})")
         print("="*70)
         
-        n_samples = min(n_samples, len(X_test_orig))
+        n_samples = min(self.n_samples, len(self.X_test_orig))
         
         # Select diverse samples: correct/incorrect for both classes
-        correct_planet = np.where((y_test == 1) & (y_pred == 1))[0]
-        incorrect_planet = np.where((y_test == 1) & (y_pred == 0))[0]
-        correct_nonplanet = np.where((y_test == 0) & (y_pred == 0))[0]
-        incorrect_nonplanet = np.where((y_test == 0) & (y_pred == 1))[0]
+        correct_planet = np.where((self.y_test == 1) & (self.y_pred_optimal == 1))[0]
+        incorrect_planet = np.where((self.y_test == 1) & (self.y_pred_optimal == 0))[0]
+        correct_nonplanet = np.where((self.y_test == 0) & (self.y_pred_optimal == 0))[0]
+        incorrect_nonplanet = np.where((self.y_test == 0) & (self.y_pred_optimal == 1))[0]
         
         selected_idx = []
         per_category = max(1, n_samples // 4)
@@ -338,7 +341,7 @@ class ConvolutionalNeuralNetwork:
                 selected_idx.extend(np.random.choice(idx_list, n_select, replace=False))
         
         while len(selected_idx) < n_samples:
-            remaining = list(set(range(len(y_test))) - set(selected_idx))
+            remaining = list(set(range(len(self.y_test))) - set(selected_idx))
             if remaining:
                 selected_idx.append(np.random.choice(remaining))
             else:
@@ -358,21 +361,21 @@ class ConvolutionalNeuralNetwork:
             ax = axes[plot_i]
             
             # Inverse transform to original scale for plotting
-            flux_norm = X_test_orig[idx].flatten()
-            flux_err = X_err_test[idx]
-            flux_original = scaler.inverse_transform(flux_norm.reshape(1, -1)).flatten()
+            flux_norm = self.X_test_orig[idx].flatten()
+            flux_err = self.X_err_test[idx]
+            flux_original = self.scaler.inverse_transform(flux_norm.reshape(1, -1)).flatten()
             
             time_bins = np.arange(len(flux_original))
             
             # Metadata
-            toi_name = metadata_test.loc[idx, 'toi_name']
-            tic = metadata_test.loc[idx, 'tic']
-            disp = metadata_test.loc[idx, 'disp']
-            sector = metadata_test.loc[idx, 'sector']
+            toi_name = self.metadata_test.loc[idx, 'toi_name']
+            tic = self.metadata_test.loc[idx, 'tic']
+            disp = self.metadata_test.loc[idx, 'disp']
+            sector = self.metadata_test.loc[idx, 'sector']
             
-            true_label = y_test[idx]
-            pred_label = y_pred[idx]
-            pred_prob = y_pred_proba[idx]
+            true_label = self.y_test[idx]
+            pred_label = self.y_pred_optimal[idx]
+            pred_prob = self.y_pred_proba[idx]
             
             is_correct = (true_label == pred_label)
             true_str = 'Transit' if true_label == 1 else 'Non-Transit'
@@ -405,23 +408,22 @@ class ConvolutionalNeuralNetwork:
         for j in range(n_samples, len(axes)):
             axes[j].axis('off')
         
-        plt.suptitle(f'Sample Light-curve Predictions (Threshold={threshold:.3f})',
+        plt.suptitle(f'Sample Light-curve Predictions (Threshold={self.optimal_threshold:.3f})',
                     fontsize=14, fontweight='bold', y=0.995)
         plt.tight_layout()
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Saved: {save_path}")
+        plt.savefig(self.output_dir + '/' + self.output_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {self.output_dir}/{self.output_path}")
         plt.close()
 
 
-    def plot_all(self, y_test, y_pred, y_pred_proba, history, metadata_test, X_test, threshold,
-             X_test_orig=None, X_err_test=None, scaler=None):
+    def plot_all(self, X_test_orig=None, X_err_test=None, scaler=None):
         """Create and save confusion matrix and training curves. Optionally plot light curves."""
         print("\n" + "="*70)
         print("VISUALIZATIONS")
         print("="*70)
         
         # Confusion matrix (Matplotlib-only)
-        cm = confusion_matrix(y_test, y_pred)
+        cm = confusion_matrix(self.y_test, self.y_pred_optimal)
         fig, ax = plt.subplots(figsize=(8, 6))
         im = ax.imshow(cm, interpolation='nearest', cmap='Blues')
         ax.figure.colorbar(im, ax=ax)
@@ -430,7 +432,7 @@ class ConvolutionalNeuralNetwork:
             xticklabels=['Non-Planet', 'Planet'],
             yticklabels=['Non-Planet', 'Planet'],
             xlabel='Predicted', ylabel='True',
-            title=f'Confusion Matrix (threshold={threshold:.3f})')
+            title=f'Confusion Matrix (threshold={self.optimal_threshold:.3f})')
         
         # Add counts and percentages
         total = cm.sum()
@@ -441,8 +443,8 @@ class ConvolutionalNeuralNetwork:
                 ax.text(j, i, f"{count}\n({pct:.1f}%)", ha='center', va='center', color='black', fontsize=10)
         
         plt.tight_layout()
-        plt.savefig('confusion_matrix_final.png', dpi=300)
-        print("Saved: confusion_matrix_final.png")
+        plt.savefig(self.output_dir + '/confusion_matrix_final.png', dpi=300)
+        print(f"Saved: {self.output_dir}/confusion_matrix_final.png")
         plt.close()
         
         # Training history
@@ -452,9 +454,9 @@ class ConvolutionalNeuralNetwork:
         
         for idx, (metric, title) in enumerate(metrics):
             ax = axes[idx // 2, idx % 2]
-            if metric in history.history and f'val_{metric}' in history.history:
-                ax.plot(history.history[metric], label='Train', linewidth=2)
-                ax.plot(history.history[f'val_{metric}'], label='Val', linewidth=2)
+            if metric in self.history.history and f'val_{metric}' in self.history.history:
+                ax.plot(self.history.history[metric], label='Train', linewidth=2)
+                ax.plot(self.history.history[f'val_{metric}'], label='Val', linewidth=2)
                 ax.set_xlabel('Epoch')
                 ax.set_ylabel(title)
                 ax.set_title(f'{title} vs Epoch', fontweight='bold')
@@ -463,29 +465,24 @@ class ConvolutionalNeuralNetwork:
         
         plt.suptitle('Training History - Final Model', fontsize=14, fontweight='bold')
         plt.tight_layout()
-        plt.savefig('training_history_final.png', dpi=300)
-        print("Saved: training_history_final.png")
+        plt.savefig(self.output_dir + '/training_history_final.png', dpi=300)
+        print(f"Saved: {self.output_dir}/training_history_final.png")
         plt.close()
         
         # Optional: light-curve panel
         if X_test_orig is not None and X_err_test is not None and scaler is not None:
-            self.plot_lightcurves_with_predictions(X_test_orig, X_err_test, y_test, y_pred, 
-                                            y_pred_proba, metadata_test, scaler, threshold, n_samples=6)
+            self.plot_lightcurves_with_predictions()
 
 
     def main(self):
-        # X_train, X_test, y_train, y_test, metadata_test, X_test_orig, X_err_test, scaler = self.load_data(
-        #     csv_path=self.dataset_path, n_bins=self.n_bins
-        # )
-        # model = self.build_simple_cnn()
-        # history = self.train_model(model, X_train, y_train, X_test, y_test)
-        # y_pred, y_pred_proba, threshold = self.evaluate_with_optimal_threshold(model, X_test, y_test)
-        # self.plot_all(y_test, y_pred, y_pred_proba, history, metadata_test, X_test, threshold,
-        #         X_test_orig=X_test_orig, X_err_test=X_err_test, scaler=scaler)
-        # model.save('tess_model_final.keras')
-        # np.save('optimal_threshold.npy', threshold)
-        print(self.dataset_path)
-        
+        self.load_data()
+        self.build_simple_cnn()
+        self.train_model()
+        self.evaluate_with_optimal_threshold()
+        self.plot_all(X_test_orig=self.X_test_orig, X_err_test=self.X_err_test, scaler=self.scaler)
+        self.model.save(self.output_dir + '/tess_model_final.keras')
+        np.save(self.output_dir + '/optimal_threshold.npy', self.optimal_threshold)
+
         print("\n" + "="*70)
         print("TRAINING COMPLETE!")
         print("="*70)
