@@ -1,0 +1,47 @@
+Configuration 1: Default
+
+Total params: 421249
+Optimal threshold: 0.4463 (default=0.5)
+
+AUC-ROC: 0.8996
+Accuracy (default threshold=0.5): 0.7407 
+Accuracy (optimal threshold=0.4463): 0.8889 
+
+Confusion Matrix:
+[[80 15]
+ [6 88]]
+
+With optimal threshold:
+              precision    recall  f1-score   support
+
+  Non-Planet     0.9302    0.8421    0.8840        95
+      Planet     0.8544    0.9362    0.8934        94
+
+    accuracy                         0.8889       189
+   macro avg     0.8923    0.8891    0.8887       189
+weighted avg     0.8925    0.8889    0.8887       189
+
+
+
+Configuration 2:
+
+Total params: 421249
+Optimal threshold: 0.5879
+
+AUC-ROC: 0.7961
+Accuracy (default threshold=0.5): 0.4974
+Accuracy (optimal threshold=0.5879): 0.7725
+
+Confusion Matrix:
+[[58 37]
+ [6 88]]
+
+With optimal threshold:
+              precision    recall  f1-score   support
+
+  Non-Planet     0.9062    0.6105    0.7296        95
+      Planet     0.7040    0.9362    0.8037        94
+
+    accuracy                         0.7725       189
+   macro avg     0.8051    0.7733    0.7666       189
+weighted avg     0.8057    0.7725    0.7664       189
