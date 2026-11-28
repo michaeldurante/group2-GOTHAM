@@ -1,0 +1,25 @@
+dream:  
+  dataset_path: /home/france/Documents/exams/computational/group2-GOTHAM/assignment_2_random_forest/tess_data.csv
+  output_dir: "outputs/dream_gan"
+  # Dataset and rappresentation 44x44 (1936 points = 968 flux + 968 err)
+  image_size: 44
+  nc: 1
+  smooth_window: 3        
+  workers: 2
+
+  # GAN 
+  nz: 100
+  ngf: 64
+  ndf: 16                 
+
+  # hyperparameters for the train 
+  batch_size: 32
+  num_epochs: 3000
+  lr: 0.0001              
+  beta1: 0.5
+  tv_weight: 0.03        
+  seed: 999
+
+  # plot
+  num_samples: 4
+  plot_window: 2
