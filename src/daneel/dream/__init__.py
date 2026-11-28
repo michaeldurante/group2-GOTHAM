@@ -1,1 +1,1 @@
-from .dream_class import *
+from .dream_class_g import *

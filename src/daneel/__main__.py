@@ -1,15 +1,7 @@
 import argparse
 from datetime import datetime, timezone
-
-# from daneel.detection import TransitModel
-
-# from daneel.detection import TransitClass
 from daneel.parameters import Parameters
-# from daneel.detection import RandomForestDetection
-# from daneel.detection import ConvolutionalNeuralNetwork
-# from daneel.dream import GenerativeAdversarialNetwork
 
-# add 'e' as a choice for --show
 def main():
     parser = argparse.ArgumentParser(description="Model and analyse exoplanet transits.")
 
@@ -30,8 +22,6 @@ def main():
     parser.add_argument("-o", "--output", default="lc.png", help="Output image for --transit")
     parser.add_argument("-s","--show", nargs='?', const=True, default=None, choices=['est'] , help="Show the plot of the light curve (use '-s est' to get an estimate of the depth of the transit). This command doesn't show computation time. ")
     
-    # parser.add_argument("-e","--estimate", default=False, action="store_true", help="Quick estimate of transit depth, only if --show.") 
-
     args = parser.parse_args()
 
     """Launch Daneel"""
@@ -51,15 +41,15 @@ def main():
     elif args.detect == "rf":
         from daneel.detection import RandomForestDetection
         rf = RandomForestDetection(input_pars)
-        rf.one_click()
+        rf.main()
     elif args.detect == 'cnn':
         from daneel.detection import ConvolutionalNeuralNetwork
-        cnn = ConvolutionalNeuralNetwork(input_pars['cnn'])
+        cnn = ConvolutionalNeuralNetwork(input_pars)
         cnn.main()
         # print('ok con cnn')
     elif args.dream:
         from daneel.dream import GenerativeAdversarialNetwork
-        gan = GenerativeAdversarialNetwork(input_pars['dream'])
+        gan = GenerativeAdversarialNetwork(input_pars)
         gan.train()
         gan.generate_and_plot(output_path="synthetic_light_curves.png")
     elif args.atmosphere:

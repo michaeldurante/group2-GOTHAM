@@ -1,32 +1,33 @@
 import warnings
 warnings.filterwarnings('ignore')
 
-import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, classification_report, accuracy_score, roc_auc_score, roc_curve
 from sklearn.preprocessing import StandardScaler
 
-import tensorflow as tf
+# remove init messages from terminal when importing tensorflow
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+stderr_fd = os.dup(2)
+devnull = os.open(os.devnull, os.O_WRONLY)
+os.dup2(devnull, 2)
+try:
+    import tensorflow as tf
+finally:
+    os.dup2(stderr_fd, 2)
+    os.close(stderr_fd)
+    os.close(devnull)
+
 import keras
 from keras import layers, models, regularizers
-# from tensorflow.keras import layers, models, regularizers
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from keras import backend as K
 
-try:
-    gpus = tf.config.experimental.list_physical_devices('GPU')
-    for gpu in gpus:
-        tf.config.experimental.set_memory_growth(gpu, True)
-    if gpus:
-        print(f"Enabled memory growth for {len(gpus)} GPU(s).")
-except Exception as e:
-    print("GPU setup note:", e)
-
-print("TF version:", tf.__version__)
 
 # reproducibility
 RANDOM_STATE = 42
@@ -42,14 +43,10 @@ class ConvolutionalNeuralNetwork:
         self.n_bins = p_dictionary.get('n_bins', 1000)
         self.dataset_path = p_dictionary.get('dataset_path')
         self.n_samples = p_dictionary.get('n_samples', 8)
-        self.output_path = p_dictionary.get('ouput_path', 'sample_lightcurves_predictions.png')
         self.output_dir = p_dictionary.get('output_dir', './results_cnn')
+        self.test_size = p_dictionary.get('test_size', 0.2)
 
-        try:
-            os.makedirs(self.output_dir)
-        except FileExistsError:
-            # directory already exists
-            pass
+        Path(self.output_dir).mkdir(parents=True, exist_ok=True)
         
 
     def focal_loss(self, y_true, y_pred):
@@ -148,8 +145,8 @@ class ConvolutionalNeuralNetwork:
         # Train/test split (keep errors aligned; stratify to preserve class ratio)
         self.X_train, self.X_test, self.y_train, self.y_test, self.X_err_train, self.X_err_test, _, idx_test = train_test_split(
             X, y, X_err, np.arange(len(y)),
-            test_size=0.2,
-            random_state=42,
+            test_size=self.test_size,
+            random_state=RANDOM_STATE,
             stratify=y
         )
         
@@ -255,7 +252,7 @@ class ConvolutionalNeuralNetwork:
                 mode='max',
                 verbose=1
             ),
-            ModelCheckpoint(self.output_dir + '/best_model_final.keras',
+            ModelCheckpoint(self.output_dir / 'best_model_final.keras',
                 monitor='val_auc',
                 save_best_only=True,
                 mode='max',
@@ -320,9 +317,9 @@ class ConvolutionalNeuralNetwork:
 
     def plot_lightcurves_with_predictions(self):
         """Plot light curves with error bars and prediction info; save to file."""
-        print("\n" + "="*70)
-        print(f"PLOTTING LIGHTCURVES WITH PREDICTIONS (n={self.n_samples})")
-        print("="*70)
+        # print("\n" + "="*70)
+        # print(f"PLOTTING LIGHTCURVES WITH PREDICTIONS (n={self.n_samples})")
+        # print("="*70)
         
         n_samples = min(self.n_samples, len(self.X_test_orig))
         
@@ -411,16 +408,16 @@ class ConvolutionalNeuralNetwork:
         plt.suptitle(f'Sample Light-curve Predictions (Threshold={self.optimal_threshold:.3f})',
                     fontsize=14, fontweight='bold', y=0.995)
         plt.tight_layout()
-        plt.savefig(self.output_dir + '/' + self.output_path, dpi=300, bbox_inches='tight')
-        print(f"Saved: {self.output_dir}/{self.output_path}")
+        plt.savefig(self.output_dir / 'sample_lightcurves_predictions.png', dpi=300, bbox_inches='tight')
+        # print(f"Saved: {self.output_dir}/{self.output_path}")
         plt.close()
 
 
     def plot_all(self, X_test_orig=None, X_err_test=None, scaler=None):
         """Create and save confusion matrix and training curves. Optionally plot light curves."""
-        print("\n" + "="*70)
-        print("VISUALIZATIONS")
-        print("="*70)
+        # print("\n" + "="*70)
+        # print("VISUALIZATIONS")
+        # print("="*70)
         
         # Confusion matrix (Matplotlib-only)
         cm = confusion_matrix(self.y_test, self.y_pred_optimal)
@@ -443,8 +440,8 @@ class ConvolutionalNeuralNetwork:
                 ax.text(j, i, f"{count}\n({pct:.1f}%)", ha='center', va='center', color='black', fontsize=10)
         
         plt.tight_layout()
-        plt.savefig(self.output_dir + '/confusion_matrix_final.png', dpi=300)
-        print(f"Saved: {self.output_dir}/confusion_matrix_final.png")
+        plt.savefig(self.output_dir / 'confusion_matrix_final.png', dpi=300)
+        # print(f"Saved: {self.output_dir}/confusion_matrix_final.png")
         plt.close()
         
         # Training history
@@ -465,8 +462,8 @@ class ConvolutionalNeuralNetwork:
         
         plt.suptitle('Training History - Final Model', fontsize=14, fontweight='bold')
         plt.tight_layout()
-        plt.savefig(self.output_dir + '/training_history_final.png', dpi=300)
-        print(f"Saved: {self.output_dir}/training_history_final.png")
+        plt.savefig(self.output_dir / 'training_history_final.png', dpi=300)
+        # print(f"Saved: {self.output_dir}/training_history_final.png")
         plt.close()
         
         # Optional: light-curve panel
@@ -480,22 +477,25 @@ class ConvolutionalNeuralNetwork:
         self.train_model()
         self.evaluate_with_optimal_threshold()
         self.plot_all(X_test_orig=self.X_test_orig, X_err_test=self.X_err_test, scaler=self.scaler)
-        self.model.save(self.output_dir + '/tess_model_final.keras')
-        np.save(self.output_dir + '/optimal_threshold.npy', self.optimal_threshold)
+        self.model.save(self.output_dir / 'tess_model_final.keras')
+        np.save(self.output_dir / 'optimal_threshold.npy', self.optimal_threshold)
+        print(f'All figures and outputs saved in {self.output_dir}')
 
-        print("\n" + "="*70)
-        print("TRAINING COMPLETE!")
-        print("="*70)
-        print("\nKey improvements:")
-        print("  ✓ Perfectly balanced training data")
-        print("  ✓ Focal loss for hard examples")
-        print("  ✓ Optimal threshold selection")
-        print("  ✓ AUC-focused optimization")
-        print("\nFiles:")
-        print("  - tess_model_final.keras")
-        print("  - best_model_final.keras")
-        print("  - optimal_threshold.npy")
-        print("  - confusion_matrix_final.png")
-        print("  - training_history_final.png")
-        print("  - sample_lightcurves_predictions.png")
-        print("="*70)
+        # print("\n" + "="*70)
+        # print("TRAINING COMPLETE!")
+        # print("="*70)
+        # print("\nKey improvements:")
+        # print("  ✓ Perfectly balanced training data")
+        # print("  ✓ Focal loss for hard examples")
+        # print("  ✓ Optimal threshold selection")
+        # print("  ✓ AUC-focused optimization")
+        # print("\nFiles:")
+        # print("  - tess_model_final.keras")
+        # print("  - best_model_final.keras")
+        # print("  - optimal_threshold.npy")
+        # print("  - confusion_matrix_final.png")
+        # print("  - training_history_final.png")
+        # print("  - sample_lightcurves_predictions.png")
+        # print("="*70)
+
+        '''aggiungi nel READMI gli output di ogni metodo che abbiamo implementato'''

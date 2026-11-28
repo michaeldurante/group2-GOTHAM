@@ -1,10 +1,10 @@
 import warnings
 warnings.filterwarnings('ignore')
 
-import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -32,19 +32,20 @@ class RandomForestDetection:
         self.samples_per_class = p_dictionary.get('samples_per_class', 350)
         self.test_size = p_dictionary.get('test_size', 0.2)
         self.output_dir = p_dictionary.get('output_dir', "./results_rf")
+        self.min_samples_leaf = p_dictionary.get('min_samples_leaf', 1)
+        self.max_features = p_dictionary.get('max_features', 'sqrt')
+        self.bootstrap = p_dictionary.get('bootstrap', True)
+        self.class_weight = p_dictionary.get('class_weight', None)
+        self.n_jobs = p_dictionary.get('n_jobs', -1)
+        self.oob_score = p_dictionary.get('oob_score', True)
 
-        try:
-            os.makedirs(self.output_dir)
-        except FileExistsError:
-            # directory already exists
-            pass
+        Path(self.output_dir).mkdir(parents=True, exist_ok=True)
 
-        # print(self.n_estimators)
 
-    def create_balanced_dataset(self, X, y):    
-        X0 = X[y == 0]
-        X1 = X[y == 1]
-    
+    def create_balanced_dataset(self):    
+        X0 = self.X_train[self.y_train == 0]
+        X1 = self.X_train[self.y_train == 1]
+
         def augment_to_target(X_orig, n_target):
             if len(X_orig) >= n_target:
                 idx = np.random.choice(len(X_orig), n_target, replace=False)
@@ -78,12 +79,12 @@ class RandomForestDetection:
         
         idx = np.arange(len(X_bal))
         np.random.shuffle(idx)
+
         return X_bal[idx], y_bal[idx]
+
         
     def load_data(self):
-        
         df = pd.read_csv(self.csv_path)
-        # print(f"Dataset: {df.shape[0]} samples")
         
         flux_cols = [f'flux_{i:04d}' for i in range(self.n_bins)]
         flux_err_cols = [f'flux_err_{i:04d}' for i in range(self.n_bins)]
@@ -99,7 +100,7 @@ class RandomForestDetection:
         # if (y==0).sum() > 0:
         #     print(f"  Ratio: {(y==1).sum() / (y==0).sum():.2f}:1")
         
-        X_train, X_test, y_train, y_test, X_err_train, X_err_test, idx_train, idx_test = train_test_split(
+        self.X_train, self.X_test, self.y_train, self.y_test, self.X_err_train, self.X_err_test, self.idx_train, self.idx_test = train_test_split(
             X, y, X_err, np.arange(len(y)),
             test_size=self.test_size,
             random_state=RANDOM_STATE,
@@ -108,96 +109,84 @@ class RandomForestDetection:
         # print(f"Initial split - Train: {len(X_train)}, Test: {len(X_test)}")
         
         # Balance training set
-        X_train, y_train = self.create_balanced_dataset(X_train, y_train)
+        self.X_train, self.y_train = self.create_balanced_dataset()
         
-        scaler = None
+        self.scaler = None
         if self.use_scaler:
-            scaler = StandardScaler()
-            X_train = scaler.fit_transform(X_train)
-            X_test = scaler.transform(X_test)
+            self.scaler = StandardScaler()
+            self.X_train = self.scaler.fit_transform(self.X_train)
+            self.X_test = self.scaler.transform(self.X_test)
             # print(f"Train: mean={X_train.mean():.6f}, std={X_train.std():.6f}")
             # print(f"Test:  mean={X_test.mean():.6f}, std={X_test.std():.6f}")
         
-        metadata_test = metadata.iloc[idx_test].reset_index(drop=True)
+        self.metadata_test = metadata.iloc[self.idx_test].reset_index(drop=True)
         # print(f"Final - X_train: {X_train.shape}, X_test: {X_test.shape}")
         # print(f"Train dist: 0={(y_train==0).sum()}, 1={(y_train==1).sum()}")
         
         # Return X_test copy (for optional inverse transform plotting if scaler is used)
-        return X_train, X_test, y_train, y_test, metadata_test, X_test.copy(), X_err_test, scaler
+        self.X_test_orig = self.X_test.copy()
 
 
-    def build_random_forest(self,
-        n_estimators=500,
-        max_depth=None,
-        min_samples_leaf=1,
-        max_features='sqrt',
-        bootstrap=True,
-        class_weight=None,
-        random_state=RANDOM_STATE,
-        n_jobs=-1,
-        oob_score=True
-    ):
-        rf = RandomForestClassifier(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            min_samples_leaf=min_samples_leaf,
-            max_features=max_features,
-            bootstrap=bootstrap,
-            class_weight=class_weight,
-            random_state=random_state,
-            n_jobs=n_jobs,
-            oob_score=oob_score
+    def build_random_forest(self):
+        self.rf = RandomForestClassifier(
+            n_estimators=self.n_estimators,
+            max_depth=self.max_depth,
+            min_samples_leaf=self.min_samples_leaf,
+            max_features=self.max_features,
+            bootstrap=self.bootstrap,
+            class_weight=self.class_weight,
+            random_state=RANDOM_STATE,
+            n_jobs=self.n_jobs,
+            oob_score=self.oob_score
         )
-        return rf
 
-    def train_model(self, model, X_train, y_train):
-        model.fit(X_train, y_train)
+
+    def train_model(self):
+        self.rf.fit(self.X_train, self.y_train)
         # if hasattr(model, 'oob_score_') and model.oob_score_ is not None:
         #     print(f"OOB Score: {model.oob_score_:.4f}")
-        return model
 
 
-    '''questi print salvali su file'''
-    def evaluate_with_optimal_threshold(self, model, X_test, y_test):
+    def evaluate_with_optimal_threshold(self):
 
-        proba = model.predict_proba(X_test)[:, 1]
-        fpr, tpr, thresholds = roc_curve(y_test, proba)
+        self.proba = self.rf.predict_proba(self.X_test)[:, 1]
+        fpr, tpr, thresholds = roc_curve(self.y_test, self.proba)
         j_scores = tpr - fpr
         best_idx = np.argmax(j_scores)
-        best_thresh = thresholds[best_idx]
+        self.best_thresh = thresholds[best_idx]
         
-        y_pred_default = (proba >= 0.5).astype(int)
-        y_pred_best = (proba >= best_thresh).astype(int)
+        y_pred_default = (self.proba >= 0.5).astype(int)
+        self.y_pred_best = (self.proba >= self.best_thresh).astype(int)
         
-        auc = roc_auc_score(y_test, proba)
-        acc_default = accuracy_score(y_test, y_pred_default)
-        acc_best = accuracy_score(y_test, y_pred_best)
+        auc = roc_auc_score(self.y_test, self.proba)
+        acc_default = accuracy_score(self.y_test, y_pred_default)
+        acc_best = accuracy_score(self.y_test, self.y_pred_best)
+
+        self.roc_tuple = (fpr, tpr, thresholds)
 
         out_txt = self.output_dir / 'classifier_statistics.txt'
         with open(out_txt, 'w') as f:
-            if hasattr(model, 'oob_score_') and model.oob_score_ is not None:
-                print(f"OOB Score: {model.oob_score_:.4f}", file=f)
+            if hasattr(self.rf, 'oob_score_') and self.rf.oob_score_ is not None:
+                print(f"OOB Score: {self.rf.oob_score_:.4f}", file=f)
             print("\n" + "="*70, file=f)
             print("THRESHOLD OPTIMIZATION & EVALUATION", file=f)
             print("="*70, file=f)
             
-            print(f"Optimal threshold: {best_thresh:.4f} (default=0.5)", file=f)
+            print(f"Optimal threshold: {self.best_thresh:.4f} (default=0.5)", file=f)
             print(f"  At this threshold: TPR={tpr[best_idx]:.4f}, FPR={fpr[best_idx]:.4f}", file=f)
             print(f"AUC-ROC: {auc:.4f}", file=f)
             print(f"Accuracy @0.5: {acc_default:.4f} ({acc_default*100:.2f}%)", file=f)
-            print(f"Accuracy @{best_thresh:.4f}: {acc_best:.4f} ({acc_best*100:.2f}%)", file=f)
+            print(f"Accuracy @{self.best_thresh:.4f}: {acc_best:.4f} ({acc_best*100:.2f}%)", file=f)
             
             print("\nClassification report (optimal threshold):", file=f)
-            print(classification_report(y_test, y_pred_best, target_names=['Non-Planet','Planet'], digits=4, zero_division=0), file=f)
+            print(classification_report(self.y_test, self.y_pred_best, target_names=['Non-Planet','Planet'], digits=4, zero_division=0), file=f)
         
             f.close()
-        print(f'Classifier statistics saved to {out_txt}')
-
-        return y_pred_best, proba, best_thresh, (fpr, tpr, thresholds)
+        # print(f'Classifier statistics saved to {out_txt}')
 
 
-    def plot_confusion_matrix_image(self, y_true, y_pred, threshold, save_path='confusion_matrix_rf.png'):
-        cm = confusion_matrix(y_true, y_pred)
+    def plot_confusion_matrix_image(self, save_path='confusion_matrix_rf.png'):
+        cm = confusion_matrix(self.y_test, self.y_pred_best)
         fig = plt.figure(figsize=(6, 5))
         ax = plt.gca()
         im = ax.imshow(cm, interpolation='nearest')
@@ -207,7 +196,7 @@ class RandomForestDetection:
             xticklabels=['Non-Planet', 'Planet'],
             yticklabels=['Non-Planet', 'Planet'],
             xlabel='Predicted', ylabel='True',
-            title=f'Confusion Matrix (threshold={threshold:.3f})')
+            title=f'Confusion Matrix (threshold={self.best_thresh:.3f})')
         total = cm.sum()
         for i in range(cm.shape[0]):
             for j in range(cm.shape[1]):
@@ -216,13 +205,12 @@ class RandomForestDetection:
                 ax.text(j, i, f"{count}\n({pct:.1f}%)", ha='center', va='center')
         plt.tight_layout()
         plt.savefig(save_path, dpi=300)
-        # print(f"Saved: {save_path}")
         plt.close(fig)
 
 
-    def plot_roc_curve(self, y_true, proba, save_path='roc_curve_rf.png'):
-        fpr, tpr, _ = roc_curve(y_true, proba)
-        auc = roc_auc_score(y_true, proba)
+    def plot_roc_curve(self, save_path='roc_curve_rf.png'):
+        fpr, tpr, _ = roc_curve(self.y_test, self.proba)
+        auc = roc_auc_score(self.y_test, self.proba)
         fig = plt.figure(figsize=(6, 5))
         ax = plt.gca()
         ax.plot(fpr, tpr, linewidth=2)
@@ -233,13 +221,12 @@ class RandomForestDetection:
         ax.grid(alpha=0.3)
         plt.tight_layout()
         plt.savefig(save_path, dpi=300)
-        # print(f"Saved: {save_path}")
         plt.close(fig)
 
 
-    def plot_pr_curve(self, y_true, proba, save_path='pr_curve_rf.png'):
-        precision, recall, _ = precision_recall_curve(y_true, proba)
-        ap = average_precision_score(y_true, proba)
+    def plot_pr_curve(self, save_path='pr_curve_rf.png'):
+        precision, recall, _ = precision_recall_curve(self.y_test, self.proba)
+        ap = average_precision_score(self.y_test, self.proba)
         fig = plt.figure(figsize=(6, 5))
         ax = plt.gca()
         ax.plot(recall, precision, linewidth=2)
@@ -249,15 +236,14 @@ class RandomForestDetection:
         ax.grid(alpha=0.3)
         plt.tight_layout()
         plt.savefig(save_path, dpi=300)
-        # print(f"Saved: {save_path}")
         plt.close(fig)
 
 
-    def plot_probability_histograms(self, y_true, proba, save_path='probability_hist_RF.png'):
+    def plot_probability_histograms(self, save_path='self.probability_hist_RF.png'):
         fig = plt.figure(figsize=(6, 5))
         ax = plt.gca()
-        ax.hist(proba[y_true==0], bins=30, alpha=0.6, label='Non-Planet', density=True)
-        ax.hist(proba[y_true==1], bins=30, alpha=0.6, label='Planet', density=True)
+        ax.hist(self.proba[self.y_test==0], bins=30, alpha=0.6, label='Non-Planet', density=True)
+        ax.hist(self.proba[self.y_test==1], bins=30, alpha=0.6, label='Planet', density=True)
         ax.set_xlabel('Predicted Probability (class=1)')
         ax.set_ylabel('Density')
         ax.set_title('Predicted Probability Distributions by Class')
@@ -265,48 +251,23 @@ class RandomForestDetection:
         ax.grid(alpha=0.3)
         plt.tight_layout()
         plt.savefig(save_path, dpi=300)
-        # print(f"Saved: {save_path}")
         plt.close(fig)
 
 
-    def one_click(self):
-
-        print('Working...')
-        # X_train, X_test, y_train, y_test, metadata_test, X_test_std_copy, X_err_test, scaler = self.load_data(
-        # csv_path=self.csv_path, n_bins=self.n_bins, use_scaler=self.use_scaler, samples_per_class=self.samples_per_class
-        # )
-        X_train, X_test, y_train, y_test, metadata_test, X_test_std_copy, X_err_test, scaler = self.load_data()
-
-        # print('bbbbbbbbbbbbbbbbb', self.n_estimators)
-        # Build RF model
-        rf = self.build_random_forest(
-            n_estimators=self.n_estimators,
-            max_depth=self.max_depth,
-            min_samples_leaf=1,
-            max_features='sqrt',
-            bootstrap=True,
-            class_weight=None,   
-            random_state=RANDOM_STATE,
-            n_jobs=-1,
-            oob_score=True
-        )
-
-        # Train
-        rf = self.train_model(rf, X_train, y_train)
-
-        # Evaluate & choose best threshold
-        y_pred_opt, proba_test, best_thresh, roc_tuple = self.evaluate_with_optimal_threshold(rf, X_test, y_test)
+    def main(self):
+        self.load_data()
+        self.build_random_forest()              # Build RF model
+        self.train_model()                      # Train
+        self.evaluate_with_optimal_threshold()  # Evaluate & choose best threshold
 
         # Visualizations
-        self.plot_confusion_matrix_image(y_test, y_pred_opt, best_thresh, save_path=self.output_dir / 'confusion_matrix_rf.png')
-        self.plot_roc_curve(y_test, proba_test, save_path=self.output_dir / 'roc_curve_rf.png')
-        self.plot_pr_curve(y_test, proba_test, save_path=self.output_dir / 'pr_curve_rf.png')
-        self.plot_probability_histograms(y_test, proba_test, save_path=self.output_dir / 'probability_hist_RF.png')
-
-        # aggiungi questa cosa nelle funzioni di plot
-        print(f'All figure saved in {self.output_dir}') 
+        self.plot_confusion_matrix_image(save_path=self.output_dir / 'confusion_matrix_rf.png')
+        self.plot_roc_curve(save_path=self.output_dir / 'roc_curve_rf.png')
+        self.plot_pr_curve(save_path=self.output_dir / 'pr_curve_rf.png')
+        self.plot_probability_histograms(save_path=self.output_dir / 'probability_hist_RF.png')
 
         # Persist the model and the optimal threshold
-        joblib.dump(rf, self.output_dir / 'tess_rf_model.joblib')
-        np.save(self.output_dir / 'rf_optimal_threshold.npy', best_thresh)
-        print("Saved: tess_rf_model.joblib, rf_optimal_threshold.npy")
+        joblib.dump(self.rf, self.output_dir / 'tess_rf_model.joblib')
+        np.save(self.output_dir / 'rf_optimal_threshold.npy', self.best_thresh)
+        # print(f"Saved tess_rf_model.joblib and rf_optimal_threshold.npy in {self.output_dir}")
+        print(f'All figures and ouputs saved in {self.output_dir}') 

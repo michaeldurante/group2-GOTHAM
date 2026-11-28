@@ -3,7 +3,6 @@ from typing import Any
 
 import yaml
 
-
 class Parameters:
     """
     The parameters class, crucial to read configuration files and run a complex code
@@ -15,6 +14,7 @@ class Parameters:
 
     def __init__(self, input_file: str | Path):
         path = Path(input_file)
+        yaml_dir = path.resolve().parent.parent
         if not path.is_file():
             raise FileNotFoundError(f"Parameter file not found: {path}")
 
@@ -31,16 +31,22 @@ class Parameters:
         '''
         create an absolute path to the csv file starting from the .yaml path
         create path to output directory where .yaml file is
+        these paths do not depend on the user who is running daneel
         '''
-        if "detection" in loaded:
-            self.params = loaded.get('detection', loaded)
-            yaml_dir = path.parent
+        def update_paths(name):
+            self.params = loaded.get(name, loaded)
             dataset_path = (yaml_dir / self.params['dataset_path']).resolve()
             output_dir = (yaml_dir / self.params['output_dir']).resolve()
             self.params.update({'dataset_path': dataset_path, 'output_dir': output_dir})
+        
+        if 'detection' in loaded:
+            update_paths('detection')
+        elif 'cnn' in loaded:
+            update_paths('cnn')
+        elif 'dream' in loaded:
+            update_paths('dream')
 
         self._replace_none_strings(self.params)
-
 
 
     @staticmethod
@@ -51,6 +57,7 @@ class Parameters:
                 values[key] = None
             elif isinstance(value, dict):
                 Parameters._replace_none_strings(value)
+
 
     def get(self, param: str, default: Any = None) -> Any:
         return self.params.get(param, default)
