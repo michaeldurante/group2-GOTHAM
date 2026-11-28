@@ -1,0 +1,17 @@
+cnn:
+  dataset_path: assignment_2_random_forest/tess_data.csv
+  focal_gamma: 2.5
+  focal_alpha: 0.75
+  samples_per_class: 400
+  epochs: 100
+  batch_size:
+  n_bins: 1000
+  # queste sotto vediamo
+  conv_filters: [64, 128, 256]
+  kernel_size: 3
+  dense_units: [512, 256, 128]
+  dropout_conv: 0.3
+  dropout_dense: 0.2
+  lr: 0.0005
+  es_patience: 20
+  rlr_patience: 8

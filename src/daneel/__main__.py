@@ -2,10 +2,12 @@ import argparse
 from datetime import datetime, timezone
 
 # from daneel.detection import TransitModel
-from daneel.detection import TransitClass
+
+# from daneel.detection import TransitClass
 from daneel.parameters import Parameters
-from daneel.detection import RandomForestDetection
-from daneel.dream import GenerativeAdversarialNetwork
+# from daneel.detection import RandomForestDetection
+# from daneel.detection import ConvolutionalNeuralNetwork
+# from daneel.dream import GenerativeAdversarialNetwork
 
 
 def main():
@@ -22,7 +24,7 @@ def main():
 
     actions = parser.add_mutually_exclusive_group(required=True)
     actions.add_argument("-t", "--transit", action="store_true", help="Plot a transit light curve")
-    actions.add_argument("-d", "--detect", nargs='?', const=True, default=None, choices=['rf'], help="Run exoplanet detection (use '-d rf' or '--detection rf' for Random Forest)")
+    actions.add_argument("-d", "--detect", nargs='?', const=True, default=None, choices=['rf', 'cnn'], help="Run exoplanet detection (use '-d rf' or '--detection rf' for Random Forest)")
     actions.add_argument("-a", "--atmosphere", action="store_true", help="Run atmospheric characterisation")
     actions.add_argument("--dream", action='store_true', help='Run Generative Adversarial Network and generate sample light curves')
     parser.add_argument("-o", "--output", default="lc.png", help="Output image for --transit")
@@ -39,6 +41,7 @@ def main():
     input_pars = Parameters(args.input_file).params
 
     if args.transit:
+        from daneel.detection import TransitClass
         transit = TransitClass(input_pars['transit'])
         if args.estimate and args.show:
             transit.get_transit_depth()
@@ -46,9 +49,16 @@ def main():
     elif args.detect == True:
         parser.error("detection is not implemented yet; use --transit")
     elif args.detect == "rf":
+        from daneel.detection import RandomForestDetection
         rf = RandomForestDetection(input_pars)
         rf.one_click()
+    elif args.detect == 'cnn':
+        from daneel.detection import ConvolutionalNeuralNetwork
+        cnn = ConvolutionalNeuralNetwork(input_pars['cnn'])
+        cnn.main()
+        # print('ok con cnn')
     elif args.dream:
+        from daneel.dream import GenerativeAdversarialNetwork
         gan = GenerativeAdversarialNetwork(input_pars['dream'])
         gan.train()
         gan.generate_and_plot(output_path="synthetic_light_curves.png")

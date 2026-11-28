@@ -1,13 +1,13 @@
 dream:
   dataset_path: /home/michael/compu_astro/group2-GOTHAM/assignment_2_random_forest/tess_data.csv
-  batch_size: 44
+  batch_size: 32
   image_size: 44
   nc: 1
   nz: 100
   ngf: 64
   ndf: 16
-  num_epochs: 2000
-  lr: 0.0002
+  num_epochs: 150
+  lr: 0.00015
   beta1: 0.5
-  workers: 0
+  workers: 2
   num_samples: 4

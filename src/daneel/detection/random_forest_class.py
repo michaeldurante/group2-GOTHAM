@@ -6,18 +6,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# try:
-#     import IPython
-#     working_directory = "/".join(
-#             IPython.extract_module_locals()[1]["__vsc_ipynb_file__"].split("/")[:-1]
-#         )
-#     print("Setting working directory to: ", working_directory)
-#     print(os.chdir(working_directory))
-# except Exception as e:
-#     print("It was impossible to set your directory as the current one because of the following message")
-#     print(e)
-#     print("The working directory is: ", os.getcwd())
-
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
